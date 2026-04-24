@@ -65,188 +65,257 @@ Deezer Explorer is a **static, responsive website** where users search for an ar
 
 ---
 
-## Implementation plan — phased
+## Implementation plan — phased (small and testable)
+
+Execution rule for all phases:
+
+- Implement in small PR-sized increments.
+- Each increment must target one phase only.
+- Do not move to the next phase before acceptance criteria are met.
 
 ### Phase 0 — Bootstrap and CORS reality check
 
 **Objective**  
-Prove the project can be built and served as static files **and** establish how the browser will call Deezer (CORS).
+Create the minimum runnable project baseline and validate Deezer access from a browser context that matches production constraints.
+
+**Small increments**
+
+1. Bootstrap Vite + TypeScript project structure.
+2. Add scripts contract in `package.json` (`dev`, `build`, `preview`).
+3. Run one controlled fetch test for each mandatory endpoint.
+4. Record the chosen production data-access strategy based on CORS results.
 
 **Deliverables**
 
-- `package.json` with scripts: `dev`, `build`, `preview`.
-- Minimal Vite + TypeScript app that loads a single screen.
-- Documented result of a **browser `fetch`** to the three mandatory endpoints from the **same origin** you will use in production (or an equivalent test: built site on Pages preview / temporary deploy).
+- Minimal app shell renders in browser.
+- `package.json` scripts exist and run.
+- CORS test notes for:
+  - `GET /search/artist`
+  - `GET /artist/{id}/albums`
+  - `GET /album/{id}`
+- Decision note: direct browser calls vs. explicit fallback strategy.
 
-**Acceptance criteria**
+**Acceptance criteria (clear)**
 
-- `npm run build` produces a directory deployable to GitHub Pages.
-- Team agrees on a **single** data-access strategy for production (e.g. direct API if allowed by CORS, or a clearly scoped fallback—see risks).
+- `npm run dev` starts successfully and renders app shell.
+- `npm run build` completes with exit code 0 and outputs deployable `dist/`.
+- `npm run preview` serves build output without runtime crash.
+- CORS behavior is explicitly documented for all three endpoints.
+- One approved production strategy is documented before Phase 1 ends.
 
 **Manual validation**
 
-- Run `dev` and `preview`; open built files; confirm no console CORS errors on the chosen strategy.
+- Run `dev`, open app, confirm initial shell is visible.
+- Run `build` then `preview`, open preview URL, confirm shell renders.
+- Execute endpoint fetch tests in browser and capture success/failure states.
 
 **Risks**
 
-- **Deezer may not allow cross-origin browser calls** from your GitHub Pages origin. That would break a naive `fetch` plan without a fallback.
+- Deezer may block cross-origin requests from GitHub Pages origin.
 
 **Open decisions**
 
-- If direct browser access fails: whether to allow a **minimal** forwarder (e.g. one serverless function) as an exception to “no backend,” vs. staying strictly static and accepting search-only via a different constraint—**must be decided before Phase 2**.
+- If CORS fails, decide whether to allow a minimal exception (e.g. serverless proxy) or adjust scope expectations before Phase 2.
 
 ---
 
 ### Phase 1 — App shell, layout, and navigation skeleton
 
 **Objective**  
-A responsive **mobile-first** shell with placeholders for search, artist results, album grid, and album detail—navigable in principle without real data.
+Ship a mobile-first UI structure with clear navigation states for search, artist list, album grid, and album details (without full API wiring yet).
+
+**Small increments**
+
+1. Build semantic page structure (`header`, `main`, headings).
+2. Add view containers for each step in the user flow.
+3. Add state transitions between views (simple and framework-free).
+4. Validate keyboard traversal and visible focus styles.
 
 **Deliverables**
 
-- Landmark regions (e.g. header, main) and heading hierarchy.
-- Placeholder views or sections for the four steps after “open site.”
-- Basic keyboard path: tab order through interactive elements, skip link optional but desirable if layout grows.
+- Semantic shell and layout primitives.
+- Placeholder state for each user-flow step.
+- Keyboard-operable controls to move through shell states.
 
-**Acceptance criteria**
+**Acceptance criteria (clear)**
 
-- Layout usable at ~320px width and scales to desktop without broken overflow on the shell.
-- All interactive shell controls are focusable and activatable with keyboard.
+- At 320px width, no horizontal overflow in primary views.
+- At desktop width, layout remains readable and aligned.
+- Every interactive control is reachable and operable via keyboard.
+- Visible focus indicator appears on all focusable controls.
 
 **Manual validation**
 
-- Tab through the entire shell; confirm focus visibility and order.
-- Resize viewport across common breakpoints.
+- Keyboard-only pass through all shell controls.
+- Resize tests at mobile and desktop widths.
 
 **Risks**
 
-- Over-building routing (e.g. heavy SPA router) conflicts with “few dependencies”; prefer simple view switching or very small custom state.
+- Over-engineering navigation/routing increases complexity and dependencies.
 
 **Open decisions**
 
-- Whether URLs reflect state (query params / hash) for v1 or only in-memory UI state—optional for v1 if it stays single-session and bookmarking is explicitly out of scope.
+- Whether v1 state is URL-backed (hash/query) or in-memory only.
 
 ---
 
-### Phase 2 — Artist search and results (`/search/artist`)
+### Phase 2 — Artist search (`/search/artist`)
 
 **Objective**  
-Wire the search box to Deezer and show **selectable** artist results.
+Enable artist search and selection with robust loading/empty/error handling.
+
+**Small increments**
+
+1. Add search input + submit interaction.
+2. Integrate `GET /search/artist?q=...`.
+3. Render artist results list and selectable item state.
+4. Add error/empty/loading UI handling.
 
 **Deliverables**
 
-- Debounced or submit-triggered request to `GET /search/artist?q=...`.
-- Loading, empty, and error UI for search.
-- List UI with artist name (and any stable identifier from payload needed for the next call).
+- Search request flow with one artist selection output (`artistId`).
+- Artist results list with at least artist name.
+- Defensive states for loading, empty data, and network/API failures.
 
-**Acceptance criteria**
+**Acceptance criteria (clear)**
 
-- Successful query shows at least **name** per result; user can choose **one** artist and the app stores that artist’s `id` for Phase 3.
-- Failed network or API error shows a **specific** message (not a blank screen).
+- Valid artist query returns and renders a non-empty list when API has data.
+- Selecting a result stores selected `artistId` in app state.
+- Empty query or no-results case shows explicit empty-state message.
+- Failed request shows explicit error message and allows retry.
 
 **Manual validation**
 
-- Try a common artist name, a nonsense string, and airplane mode / throttled network.
+- Test with common artist name, unknown string, and offline/throttled network.
 
 **Risks**
 
-- Rate limiting or intermittent API errors; avoid request storms (debounce / single in-flight request).
+- Request bursts and rate-limit behavior can degrade UX.
 
 **Open decisions**
 
-- Exact debounce timing and whether to cancel in-flight fetches on new input.
+- Debounce vs submit-only behavior and cancellation of in-flight requests.
 
 ---
 
-### Phase 3 — Artist albums (`/artist/{id}/albums`)
+### Phase 3 — Album list (`/artist/{id}/albums`)
 
 **Objective**  
-After artist selection, load and display **album cards** with **cover images** and titles.
+After artist selection, show a responsive album card grid with cover images and selection into album details.
+
+**Small increments**
+
+1. Integrate `GET /artist/{id}/albums`.
+2. Render album cards (cover + title).
+3. Add album selection event to open detail view.
+4. Handle loading/empty/error and image fallbacks.
 
 **Deliverables**
 
-- Call `GET /artist/{id}/albums` using the selected artist id.
-- Responsive grid of cards; lazy-loading images if trivial with native `loading="lazy"`.
-- Loading / empty / error states.
+- Album list view linked to selected artist.
+- Card grid responsive behavior.
+- Album selection carrying selected `albumId`.
 
-**Acceptance criteria**
+**Acceptance criteria (clear)**
 
-- First API page of albums renders as cards with visible cover art when Deezer provides picture URLs.
-- User can open **one** album (navigate to detail—Phase 4).
+- First page of albums renders cards when API returns data.
+- Missing/broken cover URL does not break layout (fallback behavior exists).
+- Selecting an album triggers transition to Phase 4 detail context.
+- Empty/error states are visible and non-blocking.
 
 **Manual validation**
 
-- Artists with many vs. few albums; verify layout with missing or broken images if the API returns edge cases.
+- Test artists with many albums and very few albums.
+- Simulate image load failure and verify fallback rendering.
 
 **Risks**
 
-- Large images on slow mobile; consider `max-width` / object-fit, not new libraries.
+- Large cover assets can harm mobile performance.
 
 **Open decisions**
 
-- Whether v1 shows duplicate album types (e.g. singles vs. albums) exactly as API returns, with no extra filtering.
+- Whether to display API album types exactly as returned (including duplicates/singles).
 
 ---
 
 ### Phase 4 — Album detail (`/album/{id}`)
 
 **Objective**  
-Show **tracklist**, **release date**, and **large cover** for the chosen album.
+Display selected album details: cover, release date, and ordered tracklist.
+
+**Small increments**
+
+1. Integrate `GET /album/{id}`.
+2. Render hero/summary block (cover + release date).
+3. Render ordered tracklist.
+4. Implement return path to album list while preserving context.
 
 **Deliverables**
 
-- Call `GET /album/{id}`.
-- Render ordered track list (track number + title; duration optional if in payload).
-- Prominent cover and release date field from API (handle missing date gracefully if possible).
+- Album detail screen using real API data.
+- Ordered tracklist UI.
+- Back navigation preserving selected artist context.
 
-**Acceptance criteria**
+**Acceptance criteria (clear)**
 
-- Track order matches API order.
-- User can return to album list **without** losing the selected artist context (browser back or in-app “back” is enough—pick one behavior and test it).
+- Track order in UI matches API response order.
+- Release date is displayed when available; missing date handled gracefully.
+- Back action returns to album list without losing selected artist.
+- Long tracklists remain usable on small screens.
 
 **Manual validation**
 
-- Albums with one track vs. many; special characters in titles.
+- Validate albums with short and long tracklists.
+- Validate titles with special characters.
 
 **Risks**
 
-- Very long tracklists on small screens—ensure scroll and focus management remain sane.
+- Long lists and large media can impact scroll/focus experience on mobile.
 
 **Open decisions**
 
-- “Back” behavior: native history vs. explicit button only.
+- Browser history back vs explicit in-app back control for v1.
 
 ---
 
-### Phase 5 — Accessibility pass, polish, and Pages deployment
+### Phase 5 — Accessibility, hardening, and GitHub Pages deployment
 
 **Objective**  
-Meet the v1 accessibility bar for the main flow and ship a reproducible GitHub Pages deploy.
+Finalize v1 quality baseline and ship reproducible static deployment.
+
+**Small increments**
+
+1. Accessibility pass on the full flow (keyboard + semantics + focus).
+2. Resilience pass (error copy, edge states, loading behavior).
+3. Configure GitHub Pages deployment with correct Vite `base`.
+4. Sync docs (`README.md`) with actual runnable/deploy steps.
 
 **Deliverables**
 
-- Focus styles, `aria-live` for async search results where appropriate, button vs. link semantics for actions, alt text strategy for covers (decorative vs. informative—document choice).
-- README section: local dev, build, deploy, and **known CORS / API limitations**.
-- CI workflow (or exact manual steps if CI deferred—prefer CI) publishing `dist/`.
+- Full keyboard-operable flow from search to album detail and back.
+- Deployment workflow producing and publishing `dist/`.
+- Updated README with real setup and known limitations.
 
-**Acceptance criteria**
+**Acceptance criteria (clear)**
 
-- Full flow completable with **keyboard only** (search → pick artist → pick album → read detail → go back).
-- Lighthouse or manual checklist documented (no need to hit a numeric score target in this plan—only that checks were run and critical issues fixed).
-- Live GitHub Pages URL runs the same flow as local `preview` with correct `base`.
+- Full primary flow is keyboard-completable without pointer input.
+- Build and deployment process is repeatable from clean clone.
+- Live GitHub Pages build serves assets correctly (no broken base path).
+- Known CORS and API limitations are documented in README.
 
 **Manual validation**
 
-- Keyboard-only run-through on mobile viewport emulation and one real device if available.
-- Fresh install: clone → `npm ci` → `build` → success.
+- Keyboard-only end-to-end run on mobile viewport and desktop.
+- Clean-run validation: clone -> install -> build -> preview -> deploy.
+- Verify deployed URL behavior on `*.github.io`.
 
 **Risks**
 
-- Last-minute CORS differences between `localhost` and `*.github.io`.
+- Production-origin CORS behavior may differ from localhost tests.
 
 **Open decisions**
 
-- Optional: `prefers-reduced-motion` for any transitions added in polish.
+- Whether to include reduced-motion support in v1 polish scope.
 
 ---
 
