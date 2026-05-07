@@ -11,6 +11,7 @@ const COVER_FALLBACK_SRC =
 let selectedArtistId = null;
 let selectedArtistName = "";
 let selectedAlbumId = null;
+let currentArtistAlbums = [];
 
 function buildProxyUrl(path) {
   const deezerUrl = `${DEEZER_BASE_URL}${path}`;
@@ -98,7 +99,97 @@ function selectArtist(artistId, artistName) {
 
 function selectAlbum(albumId, albumTitle) {
   selectedAlbumId = albumId;
-  resultsStatus.textContent = `Selected album: ${albumTitle} (id: ${selectedAlbumId})`;
+  void loadAlbumDetailsById(albumId, albumTitle);
+}
+
+function renderAlbumDetail(album) {
+  resultsList.innerHTML = "";
+
+  const detailItem = document.createElement("li");
+
+  const backButton = document.createElement("button");
+  backButton.type = "button";
+  backButton.textContent = "Back to albums";
+  backButton.addEventListener("click", () => {
+    if (currentArtistAlbums.length === 0) {
+      resultsStatus.textContent = `No albums found for ${selectedArtistName}.`;
+      resultsList.innerHTML = "";
+      return;
+    }
+
+    resultsStatus.textContent = `Showing ${currentArtistAlbums.length} album(s) for ${selectedArtistName}.`;
+    renderAlbums(currentArtistAlbums);
+  });
+
+  const coverImage = document.createElement("img");
+  coverImage.src = album.cover_medium || album.cover || COVER_FALLBACK_SRC;
+  coverImage.alt = `${album.title} cover`;
+  coverImage.width = 180;
+  coverImage.height = 180;
+  coverImage.loading = "lazy";
+  coverImage.addEventListener("error", () => {
+    coverImage.src = COVER_FALLBACK_SRC;
+  });
+
+  const title = document.createElement("h3");
+  title.textContent = album.title || "Untitled album";
+
+  const releaseDate = document.createElement("p");
+  releaseDate.textContent = `Release date: ${album.release_date || "Not available"}`;
+
+  const tracklistTitle = document.createElement("h4");
+  tracklistTitle.textContent = "Tracklist";
+
+  const tracks = album.tracks && Array.isArray(album.tracks.data)
+    ? album.tracks.data
+    : [];
+
+  if (tracks.length === 0) {
+    const emptyTracks = document.createElement("p");
+    emptyTracks.textContent = "No tracks available.";
+    detailItem.appendChild(backButton);
+    detailItem.appendChild(coverImage);
+    detailItem.appendChild(title);
+    detailItem.appendChild(releaseDate);
+    detailItem.appendChild(tracklistTitle);
+    detailItem.appendChild(emptyTracks);
+    resultsList.appendChild(detailItem);
+    return;
+  }
+
+  const tracklist = document.createElement("ol");
+  for (const track of tracks) {
+    const trackItem = document.createElement("li");
+    trackItem.textContent = track.title || "Untitled track";
+    tracklist.appendChild(trackItem);
+  }
+
+  detailItem.appendChild(backButton);
+  detailItem.appendChild(coverImage);
+  detailItem.appendChild(title);
+  detailItem.appendChild(releaseDate);
+  detailItem.appendChild(tracklistTitle);
+  detailItem.appendChild(tracklist);
+  resultsList.appendChild(detailItem);
+}
+
+async function loadAlbumDetailsById(albumId, albumTitle) {
+  resultsStatus.textContent = `Loading album details for ${albumTitle}...`;
+  resultsList.innerHTML = "";
+
+  try {
+    const response = await fetch(buildProxyUrl(`/album/${albumId}`));
+
+    if (!response.ok) {
+      throw new Error("Album detail request failed");
+    }
+
+    const album = await response.json();
+    resultsStatus.textContent = `Album details: ${album.title || albumTitle}`;
+    renderAlbumDetail(album);
+  } catch (error) {
+    resultsStatus.textContent = "Could not load album details. Try selecting the album again.";
+  }
 }
 
 async function loadAlbumsByArtistId(artistId) {
@@ -116,13 +207,16 @@ async function loadAlbumsByArtistId(artistId) {
     const albums = Array.isArray(data.data) ? data.data : [];
 
     if (albums.length === 0) {
+      currentArtistAlbums = [];
       resultsStatus.textContent = `No albums found for ${selectedArtistName}.`;
       return;
     }
 
+    currentArtistAlbums = albums;
     resultsStatus.textContent = `Showing ${albums.length} album(s) for ${selectedArtistName}.`;
     renderAlbums(albums);
   } catch (error) {
+    currentArtistAlbums = [];
     resultsStatus.textContent = "Could not load albums. Try selecting the artist again.";
   }
 }
